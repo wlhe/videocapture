@@ -25,8 +25,8 @@
 using namespace std;
 using namespace cv;
 
-#define CAMERA	"/dev/video2"
-#define CAPTURE_FILE	"frame_t2"
+#define CAMERA  "/dev/video2"
+#define CAPTURE_FILE    "frame_t2"
 
 #define MAX_HEIGHT  1024
 #define MAX_WIDTH   768
@@ -35,8 +35,8 @@ using namespace cv;
     
 typedef struct __video_buffer
 {
-	void *start;
-	size_t length;
+    void *start;
+    size_t length;
 
 }video_buf_t;
 
@@ -78,41 +78,41 @@ int main(int argc, char *argv[])
         camera = argv[1];
         file = argv[2];
     }
-	// v4l2_init();
-	// v4l2_start();
-	//v4l2_cvshow();
-    // thread *t1 = new thread(v4l2_cvshow);
-    // thread *t2 = new thread(v4l2_save);
-    // t2->join();
-    // t1->join();
+    v4l2_init();
+    v4l2_start();
+    //v4l2_cvshow();
+    thread *t1 = new thread(v4l2_cvshow);
+    thread *t2 = new thread(v4l2_save);
+    t2->join();
+    t1->join();
 
-    thread *t3 = new thread(opencv_cap);
-    t3->join();
+    // thread *t3 = new thread(opencv_cap);
+    // t3->join();
 
 
 
-	//while(1);
-	
-	return 0;
+    //while(1);
+    
+    return 0;
 }
 
 
 bool v4l2_init()
 {
-	if((fd = open(camera,O_RDWR)) == -1)
-	{
-		perror("Camera open failed!\n");
-		return false;
-	}
+    if((fd = open(camera,O_RDWR)) == -1)
+    {
+        perror("Camera open failed!\n");
+        return false;
+    }
 
-	//query camera capabilities
-	struct v4l2_capability cap;
+    //query camera capabilities
+    struct v4l2_capability cap;
 
-	if(ioctl(fd,VIDIOC_QUERYCAP,&cap) == -1)
-	{
-		perror("VIDIOC_QUERYCAP failed!\n");
-		return false;
-	}
+    if(ioctl(fd,VIDIOC_QUERYCAP,&cap) == -1)
+    {
+        perror("VIDIOC_QUERYCAP failed!\n");
+        return false;
+    }
 
     // printf("Capability Informations:\n");
     // printf(" driver: %s\n", cap.driver);
@@ -142,15 +142,15 @@ bool v4l2_init()
 
     if(ioctl(fd,VIDIOC_S_FMT,&fmt) == -1)
     {
-    	perror("VIDIOC_S_FMT failed!\n");
-    	return false;
+        perror("VIDIOC_S_FMT failed!\n");
+        return false;
     }
 
     //get format
     if(ioctl(fd,VIDIOC_G_FMT,&fmt) == -1)
     {
-    	perror("VIDIOC_G_FMT failed!\n");
-    	return false;
+        perror("VIDIOC_G_FMT failed!\n");
+        return false;
     }
     printf("Stream Format Informations:\n");
     printf(" type: %d\n", fmt.type);
@@ -174,84 +174,84 @@ bool v4l2_init()
 
 bool v4l2_start()
 {
-	//request memory allocation
-	struct v4l2_requestbuffers reqbuf;
-	reqbuf.count = BUFFER_COUNT;
-	reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	reqbuf.memory = V4L2_MEMORY_MMAP;
+    //request memory allocation
+    struct v4l2_requestbuffers reqbuf;
+    reqbuf.count = BUFFER_COUNT;
+    reqbuf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    reqbuf.memory = V4L2_MEMORY_MMAP;
 
-	if(ioctl(fd,VIDIOC_REQBUFS,&reqbuf) == -1)
-	{
-		perror("VIDIOC_REQBUFS failed!\n");
-		return false;
-	}
+    if(ioctl(fd,VIDIOC_REQBUFS,&reqbuf) == -1)
+    {
+        perror("VIDIOC_REQBUFS failed!\n");
+        return false;
+    }
 
-	framebuf = (video_buf_t *)calloc(reqbuf.count,sizeof(video_buf_t));
-	struct v4l2_buffer buf;
+    framebuf = (video_buf_t *)calloc(reqbuf.count,sizeof(video_buf_t));
+    struct v4l2_buffer buf;
 
-	for(int i = 0;i < reqbuf.count;i ++)
-	{
-		buf.index = i;
-		buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-		buf.memory = V4L2_MEMORY_MMAP;
-		if(ioctl(fd,VIDIOC_QUERYBUF,&buf) == -1)
-		{
-			perror("VIDIOC_QUERYBUF failed!\n");
-			return false;
-		}
+    for(int i = 0;i < reqbuf.count;i ++)
+    {
+        buf.index = i;
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        if(ioctl(fd,VIDIOC_QUERYBUF,&buf) == -1)
+        {
+            perror("VIDIOC_QUERYBUF failed!\n");
+            return false;
+        }
 
-		//mmap buffer
-		framebuf[i].length = buf.length;
-		framebuf[i].start = mmap(NULL,buf.length,
-			PROT_READ | PROT_WRITE,
-			MAP_SHARED,fd,buf.m.offset);
-		if(framebuf[i].start == MAP_FAILED)
-		{
-			perror("mmap failed!\n");
-			return false;
-		}
-		//buffer queue
-		if(ioctl(fd,VIDIOC_QBUF,&buf) == -1)
-		{
-			perror("VIDIOC_QBUF failed!\n");
-			return false;
-		}
-	}
-	//start camera capture
-	enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	if(ioctl(fd,VIDIOC_STREAMON,&type) == -1)
-	{
-		perror("VIDIOC_STREAMON failed!\n");
-		return false;
-	}
+        //mmap buffer
+        framebuf[i].length = buf.length;
+        framebuf[i].start = mmap(NULL,buf.length,
+            PROT_READ | PROT_WRITE,
+            MAP_SHARED,fd,buf.m.offset);
+        if(framebuf[i].start == MAP_FAILED)
+        {
+            perror("mmap failed!\n");
+            return false;
+        }
+        //buffer queue
+        if(ioctl(fd,VIDIOC_QBUF,&buf) == -1)
+        {
+            perror("VIDIOC_QBUF failed!\n");
+            return false;
+        }
+    }
+    //start camera capture
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if(ioctl(fd,VIDIOC_STREAMON,&type) == -1)
+    {
+        perror("VIDIOC_STREAMON failed!\n");
+        return false;
+    }
 
-	return true;
+    return true;
 }
 
 void v4l2_cvshow()
 {
-	bool quit = false;
-	struct v4l2_buffer buf;
-	CvMat cvmat;
-	IplImage* image;
-	int retry = 0;
+    bool quit = false;
+    struct v4l2_buffer buf;
+    CvMat cvmat;
+    IplImage* image;
+    int retry = 0;
     int buffercounter = 0;
     double start = 0, end = 0, dt = 0;
 
-	while(!quit)
-	{
+    while(!quit)
+    {
         start = get_current_time();
-		buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-		buf.memory = V4L2_MEMORY_MMAP;
-		if(ioctl(fd,VIDIOC_DQBUF,&buf) == -1)
-		{
-			perror("VIDIOC_DQBUF failed!\n");
-			usleep(10000);
-			retry ++;
-			if(retry > 10)
-				quit = true;
-			continue;
-		}
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        if(ioctl(fd,VIDIOC_DQBUF,&buf) == -1)
+        {
+            perror("VIDIOC_DQBUF failed!\n");
+            usleep(10000);
+            retry ++;
+            if(retry > 10)
+                quit = true;
+            continue;
+        }
         
         frame.length = buf.length;
         memcpy(frame.data,framebuf[buf.index].start,buf.length);
@@ -264,19 +264,19 @@ void v4l2_cvshow()
 
         //printf("buf.length = %d, height * width * 3 = %d\n",buf.length,height * width * 3);
 
-		// Mat img(height,width,CV_8UC3,framebuf[buf.index].start);
-		// imshow("Image",img);
-		
-		cvmat = cvMat(height,width,CV_8UC3,framebuf[buf.index].start);
-		image = cvDecodeImage(&cvmat,1);
-		cvShowImage("Image",image);
-		cvReleaseImage(&image);
+        // Mat img(height,width,CV_8UC3,framebuf[buf.index].start);
+        // imshow("Image",img);
+        
+        cvmat = cvMat(height,width,CV_8UC3,framebuf[buf.index].start);
+        image = cvDecodeImage(&cvmat,1);
+        cvShowImage("Image",image);
+        cvReleaseImage(&image);
 
-		if(ioctl(fd,VIDIOC_QBUF,&buf) == -1)
-		{
-			perror("VIDIOC_QBUF failed!\n");
-			continue;
-		}
+        if(ioctl(fd,VIDIOC_QBUF,&buf) == -1)
+        {
+            perror("VIDIOC_QBUF failed!\n");
+            continue;
+        }
         end = get_current_time();
 
         if(end > start)
@@ -285,8 +285,8 @@ void v4l2_cvshow()
         }
         int fps = int(1000.0/dt);
         printf("buffer %d captured,elapsed time = %lf ms, FPS = %d\n",++buffercounter,dt,fps );
-		waitKey(10);
-	}
+        waitKey(10);
+    }
     close(fd);
 
 }
