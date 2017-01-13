@@ -11,6 +11,11 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <sys/time.h>
 
+#include "opencv2/core.hpp"
+#include "opencv2/imgproc.hpp"
+#include "opencv2/videoio.hpp"
+
+
 #include <fstream>
 #include <iostream>
 #include <thread>
@@ -58,6 +63,7 @@ bool v4l2_start();
 void v4l2_cvshow();
 void v4l2_save();
 double get_current_time();
+void opencv_cap();
 
 video_buf_t *framebuf;
 char *camera = (char *)CAMERA;
@@ -72,14 +78,18 @@ int main(int argc, char *argv[])
         camera = argv[1];
         file = argv[2];
     }
-	v4l2_init();
-	v4l2_start();
+	// v4l2_init();
+	// v4l2_start();
 	//v4l2_cvshow();
-    thread *t1 = new thread(v4l2_cvshow);
-    thread *t2 = new thread(v4l2_save);
+    // thread *t1 = new thread(v4l2_cvshow);
+    // thread *t2 = new thread(v4l2_save);
+    // t2->join();
+    // t1->join();
 
-    t2->join();
-    t1->join();
+    thread *t3 = new thread(opencv_cap);
+    t3->join();
+
+
 
 	//while(1);
 	
@@ -343,3 +353,30 @@ double get_current_time()
     return t;
 }
 
+void opencv_cap()
+{
+    cout << "Built with OpenCV " << CV_VERSION << endl;
+    Mat image;
+    VideoCapture capture;
+    double start = 0, end = 0, dt = 0;
+
+    capture.open(2);
+    if(capture.isOpened())
+    {
+        cout << "Capture is opened" << endl;
+        for(;;)
+        {
+            start = get_current_time();
+            capture >> image;
+            if(image.empty())
+                break;
+            end = get_current_time();
+            dt = 0.95 * dt + 0.05 * (end - start);
+            int fps = int(1000.0/dt);
+            cout << "time = "<< dt << "\t" << "fps = " << fps << endl; 
+            imshow("Sample", image);
+            if(waitKey(10) >= 0)
+                break;
+        }
+    }
+}
