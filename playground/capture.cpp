@@ -9,16 +9,25 @@
 #include <linux/videodev2.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <sys/time.h>
 
+#include <fstream>
 #include <iostream>
+#include <thread>
+#include <queue>
+#include <mutex>
+
 using namespace std;
 using namespace cv;
 
-#define CAMERA	"/dev/video0"
-#define CAPTURE_FILE	"frame.yuv"
+#define CAMERA	"/dev/video2"
+#define CAPTURE_FILE	"frame_t2"
+
+#define MAX_HEIGHT  1024
+#define MAX_WIDTH   768
 
 #define BUFFER_COUNT 4
-
+    
 typedef struct __video_buffer
 {
 	void *start;
@@ -26,7 +35,20 @@ typedef struct __video_buffer
 
 }video_buf_t;
 
-int width = 720;
+struct  Frame
+{   
+    size_t length;
+    int height;
+    int width;
+    unsigned char data[MAX_HEIGHT * MAX_WIDTH * 3];
+};
+
+Frame frame;
+std::mutex f_lock;
+std::queue<Frame> f_queue;
+#define MAX_FRAME_QUEUE_SIZE    64
+
+int width = 640;
 int height = 480;
 
 static int fd;
@@ -34,23 +56,40 @@ static int fd;
 bool v4l2_init();
 bool v4l2_start();
 void v4l2_cvshow();
+void v4l2_save();
+double get_current_time();
 
 video_buf_t *framebuf;
+char *camera = (char *)CAMERA;
+char *file = (char *)CAPTURE_FILE;
 
 int main(int argc, char *argv[])
 {
+    if(argc == 2)
+        camera = argv[1];
+    else if(argc == 3)
+    {
+        camera = argv[1];
+        file = argv[2];
+    }
 	v4l2_init();
 	v4l2_start();
-	v4l2_cvshow();
+	//v4l2_cvshow();
+    thread *t1 = new thread(v4l2_cvshow);
+    thread *t2 = new thread(v4l2_save);
+
+    t2->join();
+    t1->join();
+
 	//while(1);
-	close(fd);
+	
 	return 0;
 }
 
 
 bool v4l2_init()
 {
-	if((fd = open(CAMERA,O_RDWR)) == -1)
+	if((fd = open(camera,O_RDWR)) == -1)
 	{
 		perror("Camera open failed!\n");
 		return false;
@@ -65,13 +104,21 @@ bool v4l2_init()
 		return false;
 	}
 
-    printf("Capability Informations:\n");
-    printf(" driver: %s\n", cap.driver);
-    printf(" card: %s\n", cap.card);
-    printf(" bus_info: %s\n", cap.bus_info);
-    printf(" version: %08X\n", cap.version);
-    printf(" capabilities: %08X\n", cap.capabilities);
- 
+    // printf("Capability Informations:\n");
+    // printf(" driver: %s\n", cap.driver);
+    // printf(" card: %s\n", cap.card);
+    // printf(" bus_info: %s\n", cap.bus_info);
+    // printf(" version: %08X\n", cap.version);
+    // printf(" capabilities: %08X\n", cap.capabilities);
+
+    if(cap.capabilities & V4L2_PIX_FMT_JPEG)
+    {
+        printf("V4L2_PIX_FMT_JPEG yes\n");
+    }
+    else 
+    {
+        printf("V4L2_PIX_FMT_JPEG no\n");
+    }
 
     //set format
     struct v4l2_format fmt;
@@ -80,7 +127,7 @@ bool v4l2_init()
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     fmt.fmt.pix.width = width;
     fmt.fmt.pix.height = height;
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;//V4L2_PIX_FMT_YUYV;
+    fmt.fmt.pix.pixelformat =  V4L2_PIX_FMT_MJPEG;//V4L2_PIX_FMT_MJPEG;//V4L2_PIX_FMT_YUYV;
     fmt.fmt.pix.field = V4L2_FIELD_NONE;//V4L2_FIELD_INTERLACED;
 
     if(ioctl(fd,VIDIOC_S_FMT,&fmt) == -1)
@@ -109,6 +156,8 @@ bool v4l2_init()
     printf(" colorspace: %d\n", fmt.fmt.pix.colorspace);
     printf(" priv: %d\n", fmt.fmt.pix.priv);
     printf(" raw_date: %s\n", fmt.fmt.raw_data);
+
+    // struct v4l2_crop 
 
     return true;
 }
@@ -176,9 +225,12 @@ void v4l2_cvshow()
 	CvMat cvmat;
 	IplImage* image;
 	int retry = 0;
+    int buffercounter = 0;
+    double start = 0, end = 0, dt = 0;
 
 	while(!quit)
 	{
+        start = get_current_time();
 		buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		buf.memory = V4L2_MEMORY_MMAP;
 		if(ioctl(fd,VIDIOC_DQBUF,&buf) == -1)
@@ -190,6 +242,17 @@ void v4l2_cvshow()
 				quit = true;
 			continue;
 		}
+        
+        frame.length = buf.length;
+        memcpy(frame.data,framebuf[buf.index].start,buf.length);
+
+        f_lock.lock();
+        if(f_queue.size() >= MAX_FRAME_QUEUE_SIZE)
+            f_queue.pop();
+        f_queue.push(frame);
+        f_lock.unlock();
+
+        //printf("buf.length = %d, height * width * 3 = %d\n",buf.length,height * width * 3);
 
 		// Mat img(height,width,CV_8UC3,framebuf[buf.index].start);
 		// imshow("Image",img);
@@ -204,7 +267,79 @@ void v4l2_cvshow()
 			perror("VIDIOC_QBUF failed!\n");
 			continue;
 		}
+        end = get_current_time();
+
+        if(end > start)
+        {
+            dt = 0.95 * dt + 0.05 * (end - start);
+        }
+        int fps = int(1000.0/dt);
+        printf("buffer %d captured,elapsed time = %lf ms, FPS = %d\n",++buffercounter,dt,fps );
 		waitKey(10);
 	}
+    close(fd);
 
 }
+
+void v4l2_save()
+{
+    bool saving = true;
+    Frame frm;
+    int qsize = 0;
+    ofstream *ofs = new ofstream();
+    int framecounter = 0;
+    double start = 0, end = 0, dt = 0;
+
+    while(saving)
+    {
+        start = get_current_time();
+        f_lock.lock();
+        if(f_queue.empty())
+        {
+            f_lock.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+        else
+        {
+            frm = f_queue.front();
+            f_queue.pop();
+        }
+        f_lock.unlock();
+
+        // stringstream name;
+        // name << framecounter << ".jpeg";
+
+        // ofs->open(name.str(),ofstream::out | ofstream::app);
+        if(framecounter == 0)
+        {
+            ofs->open(file,ofstream::out);
+        }
+        else
+        {
+            ofs->open(file,ofstream::out | ofstream::app);
+        }
+        
+        if(ofs->is_open())
+        {
+            ofs->write((const char *)frm.data,frm.length);
+        }
+        ofs->close();
+        end = get_current_time();
+        dt = end - start;
+
+        printf("frame %d saved,elapsed time = %lf ms\n",++framecounter,dt);
+        //saving = false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+double get_current_time()
+{
+    double t = 0.0;
+    struct timeval tv;
+    gettimeofday(&tv,NULL);
+    t = tv.tv_sec * 1000 + tv.tv_usec/1000.0;
+    return t;
+}
+
