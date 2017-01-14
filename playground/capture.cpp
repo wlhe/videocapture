@@ -22,14 +22,16 @@
 #include <queue>
 #include <mutex>
 
+#include "videoutils.h"
+
 using namespace std;
 using namespace cv;
 
 #define CAMERA  "/dev/video0"
 #define CAPTURE_FILE    "frame_t2"
 
-#define MAX_HEIGHT  1024
-#define MAX_WIDTH   768
+#define MAX_HEIGHT  1920
+#define MAX_WIDTH   1080
 
 #define BUFFER_COUNT 4
     
@@ -64,7 +66,7 @@ void v4l2_cvshow();
 void v4l2_save();
 double get_current_time();
 void opencv_cap();
-void yuyv_to_bgr(unsigned char *yuyv,unsigned char *rgb,int height,int width);
+
 
 video_buf_t *framebuf;
 char *camera = (char *)CAMERA;
@@ -83,14 +85,12 @@ int main(int argc, char *argv[])
     v4l2_start();
     //v4l2_cvshow();
     thread *t1 = new thread(v4l2_cvshow);
-    //thread *t2 = new thread(v4l2_save);
-    //t2->join();
+    thread *t2 = new thread(v4l2_save);
+    t2->join();
     t1->join();
 
     // thread *t3 = new thread(opencv_cap);
     // t3->join();
-
-
 
     //while(1);
     
@@ -275,11 +275,6 @@ void v4l2_cvshow()
         Mat img(height,width,CV_8UC3,bgr_image);
         imshow("Image",img);
         
-        // cvmat = cvMat(height,width,CV_8UC3,framebuf[buf.index].start);
-        // image = cvDecodeImage(&cvmat,1);
-        // cvShowImage("Image",image);
-        // cvReleaseImage(&image);
-
         if(ioctl(fd,VIDIOC_QBUF,&buf) == -1)
         {
             perror("VIDIOC_QBUF failed!\n");
@@ -325,11 +320,11 @@ void v4l2_save()
         }
         f_lock.unlock();
 
-         stringstream name;
-         name << framecounter << ".jpeg";
+         // stringstream name;
+         // name << framecounter << ".jpeg";
 
-         ofs->open(name.str(),ofstream::out | ofstream::app);
-        /*if(framecounter == 0)
+         // ofs->open(name.str(),ofstream::out | ofstream::app);
+        if(framecounter == 0)
         {
             ofs->open(file,ofstream::out);
         }
@@ -337,7 +332,7 @@ void v4l2_save()
         {
             ofs->open(file,ofstream::out | ofstream::app);
         }
-       */ 
+
         if(ofs->is_open())
         {
             ofs->write((const char *)frm.data,frm.length);
@@ -389,56 +384,3 @@ void opencv_cap()
     }
 }
 
-void yuyv_to_bgr(unsigned char *yuyv,unsigned char *rgb,int height,int width)
-{
-	int y,v,u;
-	float r,g,b;
-	size_t yuv_size = height * width * 2;
-	size_t rgb_size = height * width * 3;
-	for(int i = 0, j = 0;i < rgb_size && j < yuv_size; i += 6,j += 4)
-	{
-		/*
-			y0,u0,y1,v0 		, y2,u1,y3,u1
-			r0,g0,b0, r1,g1,b1,
-		*/
-		//first pixel
-		y = yuyv[j];	//y0
-		u = yuyv[j + 1];//u0
-		v = yuyv[j + 3];//v0
-
-		r = y + 1.4065 * (v - 128);	//r0
-		g = y - 0.3455 * (u - 128) - 0.7169 * (v - 128); //g0
-		b = y + 1.1790 * (u - 128);	//b0
-
-		if(r < 0) r = 0;
-		else if(r > 255) r = 255;
-		if(g < 0) g = 0;
-		else if(g > 255) g = 255;
-		if(b < 0) b = 0;
-		else if(b > 255) b = 255;
-
-		rgb[i + 0] = (unsigned char)b;
-		rgb[i + 1] = (unsigned char)g;
-		rgb[i + 2] = (unsigned char)r;
-
-		//second pixel
-		u = yuyv[j + 1];	//u0
-		y = yuyv[j + 2];	//y1
-		v = yuyv[j + 3];	//v0
-
-		r = y + 1.4065 * (v - 128);	//r1
-		g = y - 0.3455 * (u - 128) - 0.7169 * (v - 128); //g1
-		b = y + 1.1790 * (u - 128);	//b1
-
-		if(r < 0) r = 0;
-		else if(r > 255) r = 255;
-		if(g < 0) g = 0;
-		else if(g > 255) g = 255;
-		if(b < 0) b = 0;
-		else if(b > 255) b = 255;
-
-		rgb[i + 3] = (unsigned char)b;
-		rgb[i + 4] = (unsigned char)g;
-		rgb[i + 5] = (unsigned char)r;
-	}
-}
