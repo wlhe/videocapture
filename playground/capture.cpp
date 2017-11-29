@@ -20,7 +20,7 @@
 using namespace std;
 using namespace cv;
 
-#define CAMERA	"/dev/video2"
+#define CAMERA	"/dev/video0"
 #define CAPTURE_FILE	"frame_t2"
 
 #define MAX_HEIGHT  1024
@@ -110,15 +110,6 @@ bool v4l2_init()
     // printf(" bus_info: %s\n", cap.bus_info);
     // printf(" version: %08X\n", cap.version);
     // printf(" capabilities: %08X\n", cap.capabilities);
-
-    if(cap.capabilities & V4L2_PIX_FMT_JPEG)
-    {
-        printf("V4L2_PIX_FMT_JPEG yes\n");
-    }
-    else 
-    {
-        printf("V4L2_PIX_FMT_JPEG no\n");
-    }
 
     //set format
     struct v4l2_format fmt;
