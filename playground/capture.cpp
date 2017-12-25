@@ -234,8 +234,8 @@ void v4l2_cvshow()
 			continue;
 		}
         
-        frame.length = buf.length;
-        memcpy(frame.data,framebuf[buf.index].start,buf.length);
+        frame.length = buf.bytesused;
+        memcpy(frame.data,framebuf[buf.index].start,buf.bytesused);
 
         f_lock.lock();
         if(f_queue.size() >= MAX_FRAME_QUEUE_SIZE)
@@ -243,7 +243,7 @@ void v4l2_cvshow()
         f_queue.push(frame);
         f_lock.unlock();
 
-        //printf("buf.length = %d, height * width * 3 = %d\n",buf.length,height * width * 3);
+        // printf("buf.bytesused = %d, height * width * 3 = %d\n",buf.bytesused, height * width * 3);
 
 		// Mat img(height,width,CV_8UC3,framebuf[buf.index].start);
 		// imshow("Image",img);
